@@ -1,0 +1,70 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: taskflow-api
+
+  datasource:
+    url: jdbc:postgresql://localhost:1681/task_db
+    username: postgres
+    password: "0116"
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+
+  flyway:
+    enabled: false
+
+  mail:
+    host: smtp.gmail.com
+    port: 587
+    username: ratanakcoding.it@gmail.com
+    password: "pgtybbmknkhrylwl"
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+
+  servlet:
+    multipart:
+      max-file-size: 10MB
+      max-request-size: 20MB
+
+app:
+  jwt:
+    secret: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+    access-token-expiration-minutes: 120
+    refresh-token-expiration-days: 30
+
+  frontend-url: http://localhost:3000
+  file-storage-path: uploads
+
+google:
+  oauth:
+    client-id: replace-with-google-client-id.apps.googleusercontent.com
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    operations-sorter: method
+    tags-sorter: alpha
+    display-request-duration: true
+    doc-expansion: none
+
+logging:
+  level:
+    root: INFO
+    org.springframework.security: DEBUG
+    org.springframework.boot.context.config: DEBUG
+    com.zaxxer.hikari: DEBUG

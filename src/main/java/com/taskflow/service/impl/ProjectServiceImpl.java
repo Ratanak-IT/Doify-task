@@ -1,0 +1,149 @@
+package com.taskflow.service.impl;
+
+import com.taskflow.domain.Project;
+import com.taskflow.domain.Team;
+import com.taskflow.domain.User;
+import com.taskflow.dto.request.ProjectRequests.*;
+import com.taskflow.dto.response.Responses.*;
+import com.taskflow.exception.AccessDeniedException;
+import com.taskflow.exception.ResourceNotFoundException;
+import com.taskflow.repository.ProjectRepository;
+import com.taskflow.repository.TaskRepository;
+import com.taskflow.repository.TeamMemberRepository;
+import com.taskflow.repository.TeamRepository;
+import com.taskflow.service.ProjectService;
+import com.taskflow.domain.enums.TaskStatus;
+import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.util.UUID;
+
+import static com.taskflow.service.impl.AuthServiceImpl.mapUserResponse;
+
+@Service
+@RequiredArgsConstructor
+public class ProjectServiceImpl implements ProjectService {
+
+    private final ProjectRepository projectRepository;
+    private final TeamRepository teamRepository;
+    private final TeamMemberRepository teamMemberRepository;
+    private final TaskRepository taskRepository;
+
+    @Override
+    @Transactional
+    public ProjectResponse createProject(CreateProjectRequest request, User currentUser) {
+        Team team = teamRepository.findById(request.teamId())
+                .orElseThrow(() -> new ResourceNotFoundException("Team not found"));
+
+        if (!teamMemberRepository.existsByTeamAndUser(team, currentUser)) {
+            throw new AccessDeniedException("You are not a member of this team");
+        }
+
+        Project project = Project.builder()
+                .name(request.name())
+                .description(request.description())
+                .startDate(request.startDate())
+                .dueDate(request.dueDate())
+                .color(request.color())
+                .team(team)
+                .creator(currentUser)
+                .build();
+
+        project = projectRepository.save(project);
+        return mapProjectResponse(project, 0, 0);
+    }
+
+    @Override
+    public ProjectResponse getProject(UUID projectId, User currentUser) {
+        Project project = findProjectAndVerifyAccess(projectId, currentUser);
+        return buildProjectResponse(project);
+    }
+
+    @Override
+    public PageResponse<ProjectResponse> getProjectsByTeam(UUID teamId, User currentUser, int page, int size) {
+        Team team = teamRepository.findById(teamId)
+                .orElseThrow(() -> new ResourceNotFoundException("Team not found"));
+
+        if (!teamMemberRepository.existsByTeamAndUser(team, currentUser)) {
+            throw new AccessDeniedException("You are not a member of this team");
+        }
+
+        Page<Project> projects = projectRepository.findByTeam(team, PageRequest.of(page, size));
+        return toPageResponse(projects.map(this::buildProjectResponse));
+    }
+
+    @Override
+    public PageResponse<ProjectResponse> getMyProjects(User currentUser, int page, int size) {
+        Page<Project> projects = projectRepository.findAllAccessibleByUser(currentUser, PageRequest.of(page, size));
+        return toPageResponse(projects.map(this::buildProjectResponse));
+    }
+
+    @Override
+    @Transactional
+    public ProjectResponse updateProject(UUID projectId, UpdateProjectRequest request, User currentUser) {
+        Project project = findProjectAndVerifyAccess(projectId, currentUser);
+
+        if (request.name() != null) project.setName(request.name());
+        if (request.description() != null) project.setDescription(request.description());
+        if (request.startDate() != null) project.setStartDate(request.startDate());
+        if (request.dueDate() != null) project.setDueDate(request.dueDate());
+        if (request.color() != null) project.setColor(request.color());
+
+        project = projectRepository.save(project);
+        return buildProjectResponse(project);
+    }
+
+    @Override
+    @Transactional
+    public void deleteProject(UUID projectId, User currentUser) {
+        Project project = findProjectAndVerifyAccess(projectId, currentUser);
+        projectRepository.delete(project);
+    }
+
+    // ─── Helpers ────────────────────────────────────────────────────────────
+
+    private Project findProjectAndVerifyAccess(UUID projectId, User user) {
+        Project project = projectRepository.findById(projectId)
+                .orElseThrow(() -> new ResourceNotFoundException("Project not found"));
+
+        if (!teamMemberRepository.existsByTeamAndUser(project.getTeam(), user)) {
+            throw new AccessDeniedException("You do not have access to this project");
+        }
+        return project;
+    }
+
+    private ProjectResponse buildProjectResponse(Project project) {
+        long total = taskRepository.countByProject(project);
+        long completed = taskRepository.countByProjectAndStatus(project, TaskStatus.DONE);
+        return mapProjectResponse(project, total, completed);
+    }
+
+    private ProjectResponse mapProjectResponse(Project project, long total, long completed) {
+        int progress = total == 0 ? 0 : (int) ((completed * 100) / total);
+        return new ProjectResponse(
+                project.getId(),
+                project.getName(),
+                project.getDescription(),
+                project.getStartDate(),
+                project.getDueDate(),
+                project.getColor(),
+                project.getTeam().getId(),
+                project.getTeam().getName(),
+                mapUserResponse(project.getCreator()),
+                total,
+                completed,
+                progress,
+                project.getCreatedAt()
+        );
+    }
+
+    private <T> PageResponse<T> toPageResponse(Page<T> page) {
+        return new PageResponse<>(
+                page.getContent(), page.getNumber(), page.getSize(),
+                page.getTotalElements(), page.getTotalPages(), page.isLast()
+        );
+    }
+}
