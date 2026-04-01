@@ -111,7 +111,6 @@ public class TeamController {
         teamService.removeMember(teamId, userId, currentUser);
     }
 
-    // ─── Invitations ─────────────────────────────────────────────────────────
 
     @PostMapping("/{teamId}/invitations")
     @ResponseStatus(HttpStatus.ACCEPTED)
@@ -132,6 +131,16 @@ public class TeamController {
             @AuthenticationPrincipal User currentUser
     ) {
         teamService.acceptInvitation(token, currentUser);
+        return new MessageResponse("You have successfully joined the team");
+    }
+
+    @PostMapping("/invitations/{id}/accept")
+    @Operation(summary = "Accept invitation from notification")
+    public MessageResponse acceptInvitationById(
+            @PathVariable UUID id,
+            @AuthenticationPrincipal User currentUser
+    ) {
+        teamService.acceptInvitationById(id, currentUser);
         return new MessageResponse("You have successfully joined the team");
     }
 }

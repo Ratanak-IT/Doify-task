@@ -12,7 +12,7 @@ public interface TeamService {
     PageResponse<TeamResponse> getMyTeams(User currentUser, int page, int size);
     TeamResponse updateTeam(UUID teamId, UpdateTeamRequest request, User currentUser);
     void deleteTeam(UUID teamId, User currentUser);
-
+    void acceptInvitationById(UUID invitationId, User currentUser);
     void inviteMember(UUID teamId, InviteMemberRequest request, User currentUser);
     void acceptInvitation(String token, User currentUser);
     PageResponse<TeamMemberResponse> getMembers(UUID teamId, User currentUser, int page, int size);

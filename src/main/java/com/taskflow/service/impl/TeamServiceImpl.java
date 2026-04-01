@@ -89,6 +89,43 @@ public class TeamServiceImpl implements TeamService {
 
     @Override
     @Transactional
+    public void acceptInvitationById(UUID invitationId, User currentUser) {
+
+        TeamInvitation invitation = invitationRepository.findById(invitationId)
+                .orElseThrow(() -> new ResourceNotFoundException("Invitation not found"));
+
+        if (invitation.getStatus() != InvitationStatus.PENDING) {
+            throw new BadRequestException("Invitation already processed");
+        }
+
+        if (!invitation.getInviteeEmail().equalsIgnoreCase(currentUser.getEmail())) {
+            throw new BadRequestException("You are not allowed to accept this invitation");
+        }
+
+        // add to team
+        TeamMember member = TeamMember.builder()
+                .team(invitation.getTeam())
+                .user(currentUser)
+                .role(invitation.getInvitedRole())
+                .build();
+
+        teamMemberRepository.save(member);
+
+        // update invitation
+        invitation.setStatus(InvitationStatus.ACCEPTED);
+        invitationRepository.save(invitation);
+
+        // notify inviter
+        notificationService.createNotification(
+                invitation.getInviter(),
+                NotificationType.INVITATION_ACCEPTED,
+                currentUser.getFullName() + " accepted your invitation",
+                invitation.getId()
+        );
+    }
+
+    @Override
+    @Transactional
     public void deleteTeam(UUID teamId, User currentUser) {
         Team team = findTeamAndVerifyAccess(teamId, currentUser);
         requireRole(team, currentUser, Role.OWNER);
@@ -101,16 +138,17 @@ public class TeamServiceImpl implements TeamService {
         Team team = findTeamAndVerifyAccess(teamId, currentUser);
         requireRole(team, currentUser, Role.ADMIN);
 
-        // Check if already a member
-        userRepository.findByEmail(request.email()).ifPresent(user -> {
-            if (teamMemberRepository.existsByTeamAndUser(team, user)) {
-                throw new BadRequestException("User is already a member of this team");
-            }
-        });
+        String email = request.email().trim().toLowerCase();
 
-        // Check if already pending invitation
+        User invitedUser = userRepository.findByEmail(email)
+                .orElseThrow(() -> new BadRequestException("No account found with this email"));
+
+        if (teamMemberRepository.existsByTeamAndUser(team, invitedUser)) {
+            throw new BadRequestException("User is already a member of this team");
+        }
+
         if (invitationRepository.existsByTeamAndInviteeEmailAndStatus(
-                team, request.email(), InvitationStatus.PENDING)) {
+                team, email, InvitationStatus.PENDING)) {
             throw new BadRequestException("An invitation is already pending for this email");
         }
 
@@ -118,25 +156,23 @@ public class TeamServiceImpl implements TeamService {
         TeamInvitation invitation = TeamInvitation.builder()
                 .team(team)
                 .inviter(currentUser)
-                .inviteeEmail(request.email())
+                .inviteeEmail(email)
                 .token(token)
                 .invitedRole(request.role())
-                .expiresAt(Instant.now().plusSeconds(604800)) // 7 days
+                .expiresAt(Instant.now().plusSeconds(604800))
                 .build();
+
         invitationRepository.save(invitation);
 
-        // ✅ ADD THIS BLOCK
-        userRepository.findByEmail(request.email()).ifPresent(invitedUser -> {
-            notificationService.createNotification(
-                    invitedUser,
-                    NotificationType.TEAM_INVITATION,
-                    currentUser.getFullName() + " invited you to join team " + team.getName(),
-                    invitation.getId()
-            );
-        });
+        notificationService.createNotification(
+                invitedUser,
+                NotificationType.TEAM_INVITATION,
+                currentUser.getFullName() + " invited you to join team " + team.getName(),
+                invitation.getId()
+        );
 
         emailService.sendTeamInvitationEmail(
-                request.email(),
+                email,
                 currentUser.getFullName(),
                 team.getName(),
                 request.role().name(),
